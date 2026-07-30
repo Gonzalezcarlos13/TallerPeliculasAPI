@@ -11,10 +11,11 @@ namespace TallerPeliculasAPI.Negocio
 {
     public interface IOrdenTrabajoNegocio
     {
-        Task<bool> CrearOrdenTrabajoAsync(OrdenTrabajoDto orden);
+        Task<int> CrearOrdenTrabajoAsync(OrdenTrabajoDto orden);
         Task<bool> ActualizarOrdenTrabajoAsync(OrdenTrabajoDto orden);
         Task<bool> EliminarDetalleOTAsync(int idDetalle);
-        Task<bool> CrearOrdenTrabajoAsync(object orden);
+        Task<bool> CrearDetalleOrdenTrabajoAsync(OrdenTrabajoDetalleDto item);
+        Task<bool> CrearImagenesOrdenTrabajoAsync(OrdenTrabajoImagenDto item);
     }
     public class OrdenTrabajoNegocio : IOrdenTrabajoNegocio
     {
@@ -26,7 +27,7 @@ namespace TallerPeliculasAPI.Negocio
             _daoOrdenTrabajo = new OrdenTrabajoRepository();
         }
 
-        public async Task<bool> CrearOrdenTrabajoAsync(OrdenTrabajoDto orden)
+        public async Task<int> CrearOrdenTrabajoAsync(OrdenTrabajoDto orden)
         {
  
             return await _daoOrdenTrabajo.CrearOrdenTrabajoAsync(orden);
@@ -46,9 +47,14 @@ namespace TallerPeliculasAPI.Negocio
             return await _daoOrdenTrabajo.EliminarDetalleOTAsync(idDetalle);
         }
 
-        public Task<bool> CrearOrdenTrabajoAsync(object orden)
+        public async Task<bool> CrearDetalleOrdenTrabajoAsync(OrdenTrabajoDetalleDto detalle)
         {
-            throw new NotImplementedException();
+            return await _daoOrdenTrabajo.CrearDetalleOrdenTrabajoAsync(detalle);
+        }
+
+        public async Task<bool> CrearImagenesOrdenTrabajoAsync(OrdenTrabajoImagenDto imagen)
+        {
+            return await _daoOrdenTrabajo.CrearImagenesOrdenTrabajoAsync(imagen);
         }
     }
 }

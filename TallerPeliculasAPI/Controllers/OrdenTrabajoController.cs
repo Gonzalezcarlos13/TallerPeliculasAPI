@@ -1,12 +1,13 @@
 ﻿using System;
 using System.Threading.Tasks;
 using System.Web.Http;
+using System.Web.Http.Cors;
 using TallerPeliculasAPI.Modelo;
 using TallerPeliculasAPI.Negocio;
 
 namespace TallerPeliculasAPI.Controllers
 {
-    [RoutePrefix("api/ordentrabajo")]
+    [EnableCors(origins: "*", headers: "*", methods: "*")]
     public class OrdenTrabajoController : ApiController
     {
         private readonly IOrdenTrabajoNegocio _negocio;
@@ -19,8 +20,8 @@ namespace TallerPeliculasAPI.Controllers
         #region Crear
 
         [HttpPost]
-        [Route("Crear")]
-        public async Task<IHttpActionResult> Crear([FromBody] OrdenTrabajoDto orden)
+        [Route("api/OrdenTrabajo/Crear")]
+        public async Task<IHttpActionResult> Crear([FromBody] OrdenTrabajoCompletaDto orden)
         {
             if (orden == null)
             {
@@ -34,11 +35,31 @@ namespace TallerPeliculasAPI.Controllers
 
             try
             {
-                bool resultado = await _negocio.CrearOrdenTrabajoAsync(orden);
+                int idot = await _negocio.CrearOrdenTrabajoAsync(orden.Cabecera);
 
-                if (resultado)
+
+                if (orden.Detalles != null)
                 {
-                    return Ok(new { exito = true, mensaje = "Orden de trabajo creada correctamente." });
+                    foreach (var item in orden.Detalles)
+                    {
+                        item.Idorden = idot.ToString();
+                        await _negocio.CrearDetalleOrdenTrabajoAsync(item);
+                    }
+                }
+
+                if (orden.Imagenes != null)
+                {
+                    foreach (var item in orden.Imagenes)
+                    {
+                        item.Idorden = idot.ToString();
+                        await _negocio.CrearImagenesOrdenTrabajoAsync(item);
+                    }
+                }
+
+
+                if (idot>0)
+                {
+                    return Ok(new { Id= idot, exito = true, mensaje = "Orden de trabajo creada correctamente." });
                 }
                 else
                 {
