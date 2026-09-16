@@ -16,6 +16,7 @@ namespace TallerPeliculasAPI.Negocio
         Task<bool> EliminarDetalleOTAsync(int idDetalle);
         Task<bool> CrearDetalleOrdenTrabajoAsync(OrdenTrabajoDetalleDto item);
         Task<bool> CrearImagenesOrdenTrabajoAsync(OrdenTrabajoImagenDto item);
+        Task<List<OrdenTrabajo>> LeerOrdenTrabajo(int idOrden);
     }
     public class OrdenTrabajoNegocio : IOrdenTrabajoNegocio
     {
@@ -55,6 +56,12 @@ namespace TallerPeliculasAPI.Negocio
         public async Task<bool> CrearImagenesOrdenTrabajoAsync(OrdenTrabajoImagenDto imagen)
         {
             return await _daoOrdenTrabajo.CrearImagenesOrdenTrabajoAsync(imagen);
+        }
+
+        
+        public async Task<List<OrdenTrabajo>> LeerOrdenTrabajo(int idOrden)
+        {
+            return await _daoOrdenTrabajo.LeerOrdenTrabajo(idOrden);
         }
     }
 }

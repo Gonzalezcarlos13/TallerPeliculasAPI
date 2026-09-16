@@ -79,7 +79,7 @@ namespace TallerPeliculasAPI.Controllers
 
         #region Actualizar
         [HttpPost]
-        [Route("Actualizar")]
+        [Route("api/OrdenTrabajo/Actualizar")]
         public async Task<IHttpActionResult> Actualizar([FromBody] OrdenTrabajoDto orden)
         {
             if (orden == null)
@@ -142,5 +142,104 @@ namespace TallerPeliculasAPI.Controllers
                 return InternalServerError(ex);
             }
         }
+
+        #region Actualizar
+        [HttpGet]
+        [Route("api/OrdenTrabajo/Leer/{idorden}")]
+        public async Task<IHttpActionResult> LeerOrdenesTrabajo(string idorden)
+        {
+
+            try
+            {
+                if (string.IsNullOrEmpty(idorden))
+                {
+                    return BadRequest("El ID de la orden es requerido.");
+                }
+
+                //idorden ="37";
+                var listado = await _negocio.LeerOrdenTrabajo(int.Parse(idorden));
+                return Ok(listado);
+            }
+            catch (ArgumentException argEx)
+            {
+                return BadRequest(argEx.Message);
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
+
+        #endregion
+        #region CrearDetalle
+
+        [HttpPost]
+        [ActionName("CrearDetalleOrdenTrabajo")]
+        [Route("api/OrdenTrabajo/CrearDetalleOrdenTrabajo")]
+        public async Task<IHttpActionResult> CrearDetalleOrdenTrabajo(
+            [FromBody] OrdenTrabajoCompletaDto orden)
+        {
+            if (orden == null)
+            {
+                return BadRequest("Los datos del detalle son requeridos.");
+            }
+
+            if (orden.Detalles == null || orden.Detalles.Count == 0)
+            {
+                return BadRequest("No se recibieron detalles para guardar.");
+            }
+
+            try
+            {
+                int guardados = 0;
+
+                foreach (var item in orden.Detalles)
+                {
+                    if (item == null)
+                    {
+                        continue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(item.Idorden))
+                    {
+                        return BadRequest("El Idorden es requerido.");
+                    }
+
+                    int idOrden;
+
+                    if (!int.TryParse(item.Idorden, out idOrden) || idOrden <= 0)
+                    {
+                        return BadRequest("El Idorden no es válido.");
+                    }
+
+                    await _negocio.CrearDetalleOrdenTrabajoAsync(item);
+
+                    guardados++;
+                }
+
+                if (guardados == 0)
+                {
+                    return BadRequest("No existen detalles válidos para guardar.");
+                }
+
+                return Ok(new
+                {
+                    exito = true,
+                    cantidad = guardados,
+                    mensaje = "Productos agregados correctamente."
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
+        #endregion
     }
 }

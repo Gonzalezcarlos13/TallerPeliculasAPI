@@ -59,6 +59,9 @@ namespace TallerPeliculasAPI.Modelo
         public string ValorUnitario { get; set; }
         public string DescuentoPorcentaje { get; set; }
         public string SubTotal { get; set; }
+
+
+       
     }
 
     public class OrdenTrabajoImagenDto

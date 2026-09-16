@@ -17,6 +17,8 @@ namespace TallerPeliculasAPI.Repositorio
         Task<bool> EliminarDetalleOTAsync(int idDetalle);
         Task<bool> CrearDetalleOrdenTrabajoAsync(OrdenTrabajoDetalleDto detalle);
         Task<bool> CrearImagenesOrdenTrabajoAsync(OrdenTrabajoImagenDto imagen);
+
+        Task<List<OrdenTrabajo>> LeerOrdenTrabajo(int idOrden);
     }
 
     public class OrdenTrabajoRepository : IOrdenTrabajoRepository
@@ -203,6 +205,153 @@ namespace TallerPeliculasAPI.Repositorio
                     return filasAfectadas > 0;
                 }
             }
+        }
+
+        public async Task<bool> ObtenerOrdenesTrabajo(OrdenTrabajoImagenDto imagen)
+        {
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                using (var command = new SqlCommand("dbo.sp_LeerOrdenTrabajo", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+
+                    command.Parameters.Add("@Idorden", SqlDbType.Int).Value = "";
+                  
+                    await connection.OpenAsync();
+                    int filasAfectadas = await command.ExecuteNonQueryAsync();
+                    return filasAfectadas > 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Lee una Orden de Trabajo por ID (con sus Detalles e Imágenes) o todas si idOrden es null.
+        /// </summary>
+        /// <param name="idOrden">ID opcional de la orden</param>
+        /// <returns>Lista de Ordenes de Trabajo</returns>
+        public async Task<List<OrdenTrabajo>> LeerOrdenTrabajo(int idOrden)
+        {
+            var listaOrdenes = new List<OrdenTrabajo>();
+
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                using (var command = new SqlCommand("sp_LeerOrdenTrabajo", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+
+                    // Parámetro opcional @Idorden
+                    
+                        command.Parameters.AddWithValue("@Idorden", idOrden);
+                   
+
+                    connection.Open();
+
+                    using (var reader = command.ExecuteReader())
+                    {
+                        // RESULTADO 1: Cabecera (OrdenTrabajo)
+                        while (reader.Read())
+                        {
+                            listaOrdenes.Add(MapearOrdenTrabajo(reader));
+                        }
+
+                        // Si enviamos un idOrden específico, el SP devuelve 2 result sets adicionales
+                        if (idOrden>0 && listaOrdenes.Count > 0)
+                        {
+                            var orden = listaOrdenes[0];
+
+                            // RESULTADO 2: Detalles
+                            if (reader.NextResult())
+                            {
+                                while (reader.Read())
+                                {
+                                    orden.Detalles.Add(MapearOrdenTrabajoDetalle(reader));
+                                }
+                            }
+
+                            // RESULTADO 3: Imágenes
+                            if (reader.NextResult())
+                            {
+                                while (reader.Read())
+                                {
+                                    orden.Imagenes.Add(MapearOrdenTrabajoImagen(reader));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return listaOrdenes;
+        }
+
+ 
+
+        private OrdenTrabajo MapearOrdenTrabajo(SqlDataReader reader)
+        {
+            return new OrdenTrabajo
+            {
+                Id = Convert.ToInt32(reader["Id"]),
+                Idorden = Convert.ToInt32(reader["Idorden"]),
+                IdCliente = Convert.ToInt32(reader["IdCliente"]),
+                NombreCliente = reader["NombreCliente"].ToString(),
+                IdEncargado = Convert.ToInt32(reader["IdEncargado"]),
+                NombreEncargado = reader["NombreEncargado"].ToString(),
+                Sucursal =  reader["Sucursal"].ToString() ,
+                NotaVenta =  reader["NotaVenta"].ToString(),
+                FechaIngreso = reader["FechaIngreso"].ToString(),
+                HoraIngreso = reader["HoraIngreso"].ToString(),
+                HoraEntrega = reader["HoraEntrega"].ToString(),
+                Bodega = reader["Bodega"].ToString(),
+                IdVendedor = Convert.ToInt32(reader["IdVendedor"]),
+                NombreVendedor = reader["NombreVendedor"].ToString() ,
+                Estado = Convert.ToInt32(reader["Estado"]),
+                EstadoOTTexto = reader["EstadoOTTexto"].ToString() ,
+                UsuarioModificaOT = reader["UsuarioModificaOT"].ToString() ,
+                IngresoOrdenCompra = reader["IngresoOrdenCompra"].ToString(),
+                ReferenciasDTE = reader["ReferenciasDTE"].ToString(),
+                FechaRealEntregaOT = reader["FechaRealEntregaOT"].ToString(),
+                HoraTerminoOT =  reader["HoraTerminoOT"].ToString() ,
+                FechaEntregaCotizacionApprox = reader["FechaEntregaCotizacionApprox"].ToString(),
+                Observaciones = reader["Observaciones"].ToString(),
+                UsuarioCreaOT = reader["UsuarioCreaOT"].ToString() ,
+                AbonadoOT = Convert.ToDecimal(reader["AbonadoOT"]),
+                CotizacionAprobada = Convert.ToInt32(reader["CotizacionAprobada"]),
+                SubTotal = Convert.ToDecimal(reader["SubTotal"]),
+                DescuentoPorcentaje = Convert.ToDecimal(reader["DescuentoPorcentaje"]),
+                DescuentoMonto = Convert.ToDecimal(reader["DescuentoMonto"]),
+                TotalNeto = Convert.ToDecimal(reader["TotalNeto"]),
+                TotalIVA = Convert.ToDecimal(reader["TotalIVA"]),
+                TotalOT = Convert.ToDecimal(reader["TotalOT"])
+            };
+        }
+
+        private OrdenTrabajoDetalle MapearOrdenTrabajoDetalle(SqlDataReader reader)
+        {
+            return new OrdenTrabajoDetalle
+            {
+                IdDetalle = Convert.ToInt32(reader["IdDetalle"]),
+                Idorden = Convert.ToInt32(reader["Idorden"]),
+                CodigoProducto = reader["CodigoProducto"].ToString() ,
+                Descripcion = reader["Descripcion"].ToString() ,
+                Cantidad = Convert.ToInt32(reader["Cantidad"]),
+                ValorNeto = Convert.ToDecimal(reader["ValorNeto"]),
+                DescuentoPorcentaje = Convert.ToDecimal(reader["DescuentoPorcentaje"]),
+                TotalNeto = Convert.ToDecimal(reader["TotalNeto"]),
+                ComisionPorcentaje = Convert.ToDecimal(reader["ComisionPorcentaje"]),
+                TotalComision = Convert.ToDecimal(reader["TotalComision"]),
+                SinRebajaDeStock = Convert.ToBoolean(reader["SinRebajaDeStock"]),
+                IdTipo = Convert.ToInt32(reader["IdTipo"])
+            };
+        }
+
+        private OrdenTrabajoImagenes MapearOrdenTrabajoImagen(SqlDataReader reader)
+        {
+            return new OrdenTrabajoImagenes
+            {
+                IdImagen = Convert.ToInt32(reader["IdImagen"]),
+                Idorden = Convert.ToInt32(reader["Idorden"]),
+                RutaImagen = reader["RutaImagen"].ToString() 
+            };
         }
     }
 }
