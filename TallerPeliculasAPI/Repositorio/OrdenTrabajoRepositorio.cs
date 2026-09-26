@@ -17,8 +17,12 @@ namespace TallerPeliculasAPI.Repositorio
         Task<bool> EliminarDetalleOTAsync(int idDetalle);
         Task<bool> CrearDetalleOrdenTrabajoAsync(OrdenTrabajoDetalleDto detalle);
         Task<bool> CrearImagenesOrdenTrabajoAsync(OrdenTrabajoImagenDto imagen);
+        Task<bool> ActualizarImagenOrdenTrabajoAsync(int idImagen, string rutaImagen);
+        Task<bool> EliminarImagenOrdenTrabajoAsync(int idImagen);
 
         Task<List<OrdenTrabajo>> LeerOrdenTrabajo(int idOrden);
+        Task<decimal> LeerAbonoOrdenTrabajoAsync(int idOrden);
+        Task<bool> ActualizarAbonoOrdenTrabajoAsync(int idOrden, decimal abonadoOT);
     }
 
     public class OrdenTrabajoRepository : IOrdenTrabajoRepository
@@ -42,7 +46,6 @@ namespace TallerPeliculasAPI.Repositorio
                     {
                         command.CommandType = CommandType.StoredProcedure;
 
-                        // Ya no enviamos el parámetro @Idorden porque lo genera la BD
                         command.Parameters.Add("@IdCliente", SqlDbType.Int).Value = Convert.ToInt32(orden.IdCliente);
                         command.Parameters.Add("@NombreCliente", SqlDbType.VarChar, 150).Value = orden.NombreCliente ?? (object)DBNull.Value;
                         command.Parameters.Add("@IdEncargado", SqlDbType.Int).Value = Convert.ToInt32(orden.IdEncargado);
@@ -76,7 +79,6 @@ namespace TallerPeliculasAPI.Repositorio
 
                         await connection.OpenAsync();
 
-                        // ExecuteScalar ejecuta la consulta y retorna el objeto del SELECT SCOPE_IDENTITY()
                         var scalarResult = await command.ExecuteScalarAsync();
 
                         if (scalarResult != null && scalarResult != DBNull.Value)
@@ -189,19 +191,193 @@ namespace TallerPeliculasAPI.Repositorio
             }
 
         }
-        public async Task<bool> CrearImagenesOrdenTrabajoAsync(OrdenTrabajoImagenDto imagen)
+
+        public async Task<bool> CrearImagenesOrdenTrabajoAsync(
+            OrdenTrabajoImagenDto imagen)
         {
+            if (imagen == null)
+            {
+                throw new ArgumentNullException(
+                    nameof(imagen),
+                    "Los datos de la imagen son requeridos."
+                );
+            }
+
+            int idOrden;
+
+            if (
+                !int.TryParse(imagen.Idorden, out idOrden) ||
+                idOrden <= 0
+            )
+            {
+                throw new ArgumentException(
+                    "El Idorden de la imagen no es válido."
+                );
+            }
+
+            if (string.IsNullOrWhiteSpace(imagen.RutaImagen))
+            {
+                throw new ArgumentException(
+                    "La imagen no contiene información para guardar."
+                );
+            }
+
             using (var connection = new SqlConnection(_connectionString))
             {
-                using (var command = new SqlCommand("dbo.sp_CrearImagenOrdenTrabajo", connection))
+                await connection.OpenAsync();
+
+                using (var command = new SqlCommand(
+                    "dbo.sp_CrearImagenOrdenTrabajo",
+                    connection
+                ))
                 {
                     command.CommandType = CommandType.StoredProcedure;
 
-                    command.Parameters.Add("@Idorden", SqlDbType.Int).Value = Convert.ToInt32(imagen.Idorden);
-                    command.Parameters.Add("@RutaImagen", SqlDbType.VarChar, -1).Value = imagen.RutaImagen ?? (object)DBNull.Value;
+                    command.Parameters.Add(
+                        "@Idorden",
+                        SqlDbType.Int
+                    ).Value = idOrden;
+
+                    command.Parameters.Add(
+                        "@RutaImagen",
+                        SqlDbType.VarChar,
+                        -1
+                    ).Value = imagen.RutaImagen;
+
+                    await command.ExecuteNonQueryAsync();
+                }
+
+                const string sqlVerificar = @"
+SELECT TOP 1 IdImagen
+FROM dbo.OrdenTrabajoImagenes
+WHERE Idorden = @Idorden
+  AND RutaImagen = @RutaImagen
+ORDER BY IdImagen DESC;";
+
+                using (var verificar = new SqlCommand(
+                    sqlVerificar,
+                    connection
+                ))
+                {
+                    verificar.CommandType = CommandType.Text;
+
+                    verificar.Parameters.Add(
+                        "@Idorden",
+                        SqlDbType.Int
+                    ).Value = idOrden;
+
+                    verificar.Parameters.Add(
+                        "@RutaImagen",
+                        SqlDbType.VarChar,
+                        -1
+                    ).Value = imagen.RutaImagen;
+
+                    object resultado =
+                        await verificar.ExecuteScalarAsync();
+
+                    bool guardada =
+                        resultado != null &&
+                        resultado != DBNull.Value;
+
+                    System.Diagnostics.Debug.WriteLine(
+                        "[IMAGEN OT] IdOrden: " + idOrden
+                    );
+
+                    System.Diagnostics.Debug.WriteLine(
+                        "[IMAGEN OT] Largo RutaImagen: " +
+                        imagen.RutaImagen.Length
+                    );
+
+                    System.Diagnostics.Debug.WriteLine(
+                        "[IMAGEN OT] Guardada en BD: " +
+                        guardada
+                    );
+
+                    if (!guardada)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            "[IMAGEN OT] El procedimiento terminó, " +
+                            "pero no se encontró el registro en " +
+                            "dbo.OrdenTrabajoImagenes."
+                        );
+                    }
+
+                    return guardada;
+                }
+            }
+        }
+
+        public async Task<bool> ActualizarImagenOrdenTrabajoAsync(
+            int idImagen,
+            string rutaImagen)
+        {
+            if (idImagen <= 0)
+            {
+                throw new ArgumentException("El IdImagen no es válido.");
+            }
+
+            if (string.IsNullOrWhiteSpace(rutaImagen))
+            {
+                throw new ArgumentException(
+                    "La imagen no contiene información para actualizar."
+                );
+            }
+
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                const string sql = @"
+UPDATE dbo.OrdenTrabajoImagenes
+SET RutaImagen = @RutaImagen
+WHERE IdImagen = @IdImagen;";
+
+                using (var command = new SqlCommand(sql, connection))
+                {
+                    command.CommandType = CommandType.Text;
+
+                    command.Parameters.Add(
+                        "@IdImagen",
+                        SqlDbType.Int
+                    ).Value = idImagen;
+
+                    command.Parameters.Add(
+                        "@RutaImagen",
+                        SqlDbType.VarChar,
+                        -1
+                    ).Value = rutaImagen;
 
                     await connection.OpenAsync();
+
+                    int filasAfectadas =
+                        await command.ExecuteNonQueryAsync();
+
+                    return filasAfectadas > 0;
+                }
+            }
+        }
+
+
+        public async Task<bool> EliminarImagenOrdenTrabajoAsync(int idImagen)
+        {
+            if (idImagen <= 0)
+            {
+                throw new ArgumentException("El IdImagen no es válido.");
+            }
+
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                const string sql = @"
+DELETE FROM dbo.OrdenTrabajoImagenes
+WHERE IdImagen = @IdImagen;";
+
+                using (var command = new SqlCommand(sql, connection))
+                {
+                    command.CommandType = CommandType.Text;
+                    command.Parameters.Add("@IdImagen", SqlDbType.Int).Value = idImagen;
+
+                    await connection.OpenAsync();
+
                     int filasAfectadas = await command.ExecuteNonQueryAsync();
+
                     return filasAfectadas > 0;
                 }
             }
@@ -216,7 +392,7 @@ namespace TallerPeliculasAPI.Repositorio
                     command.CommandType = CommandType.StoredProcedure;
 
                     command.Parameters.Add("@Idorden", SqlDbType.Int).Value = "";
-                  
+
                     await connection.OpenAsync();
                     int filasAfectadas = await command.ExecuteNonQueryAsync();
                     return filasAfectadas > 0;
@@ -224,11 +400,6 @@ namespace TallerPeliculasAPI.Repositorio
             }
         }
 
-        /// <summary>
-        /// Lee una Orden de Trabajo por ID (con sus Detalles e Imágenes) o todas si idOrden es null.
-        /// </summary>
-        /// <param name="idOrden">ID opcional de la orden</param>
-        /// <returns>Lista de Ordenes de Trabajo</returns>
         public async Task<List<OrdenTrabajo>> LeerOrdenTrabajo(int idOrden)
         {
             var listaOrdenes = new List<OrdenTrabajo>();
@@ -239,41 +410,41 @@ namespace TallerPeliculasAPI.Repositorio
                 {
                     command.CommandType = CommandType.StoredProcedure;
 
-                    // Parámetro opcional @Idorden
-                    
-                        command.Parameters.AddWithValue("@Idorden", idOrden);
-                   
+                    command.Parameters.AddWithValue("@Idorden", idOrden);
 
-                    connection.Open();
+                    await connection.OpenAsync();
 
-                    using (var reader = command.ExecuteReader())
+                    using (var reader = await command.ExecuteReaderAsync())
                     {
-                        // RESULTADO 1: Cabecera (OrdenTrabajo)
-                        while (reader.Read())
+
+                        while (await reader.ReadAsync())
                         {
-                            listaOrdenes.Add(MapearOrdenTrabajo(reader));
+                            listaOrdenes.Add(
+                                MapearOrdenTrabajo(reader)
+                            );
                         }
 
-                        // Si enviamos un idOrden específico, el SP devuelve 2 result sets adicionales
-                        if (idOrden>0 && listaOrdenes.Count > 0)
+                        if (idOrden > 0 && listaOrdenes.Count > 0)
                         {
                             var orden = listaOrdenes[0];
 
-                            // RESULTADO 2: Detalles
-                            if (reader.NextResult())
+                            if (await reader.NextResultAsync())
                             {
-                                while (reader.Read())
+                                while (await reader.ReadAsync())
                                 {
-                                    orden.Detalles.Add(MapearOrdenTrabajoDetalle(reader));
+                                    orden.Detalles.Add(
+                                        MapearOrdenTrabajoDetalle(reader)
+                                    );
                                 }
                             }
 
-                            // RESULTADO 3: Imágenes
-                            if (reader.NextResult())
+                            if (await reader.NextResultAsync())
                             {
-                                while (reader.Read())
+                                while (await reader.ReadAsync())
                                 {
-                                    orden.Imagenes.Add(MapearOrdenTrabajoImagen(reader));
+                                    orden.Imagenes.Add(
+                                        MapearOrdenTrabajoImagen(reader)
+                                    );
                                 }
                             }
                         }
@@ -283,8 +454,6 @@ namespace TallerPeliculasAPI.Repositorio
 
             return listaOrdenes;
         }
-
- 
 
         private OrdenTrabajo MapearOrdenTrabajo(SqlDataReader reader)
         {
@@ -296,24 +465,24 @@ namespace TallerPeliculasAPI.Repositorio
                 NombreCliente = reader["NombreCliente"].ToString(),
                 IdEncargado = Convert.ToInt32(reader["IdEncargado"]),
                 NombreEncargado = reader["NombreEncargado"].ToString(),
-                Sucursal =  reader["Sucursal"].ToString() ,
-                NotaVenta =  reader["NotaVenta"].ToString(),
+                Sucursal = reader["Sucursal"].ToString(),
+                NotaVenta = reader["NotaVenta"].ToString(),
                 FechaIngreso = reader["FechaIngreso"].ToString(),
                 HoraIngreso = reader["HoraIngreso"].ToString(),
                 HoraEntrega = reader["HoraEntrega"].ToString(),
                 Bodega = reader["Bodega"].ToString(),
                 IdVendedor = Convert.ToInt32(reader["IdVendedor"]),
-                NombreVendedor = reader["NombreVendedor"].ToString() ,
+                NombreVendedor = reader["NombreVendedor"].ToString(),
                 Estado = Convert.ToInt32(reader["Estado"]),
-                EstadoOTTexto = reader["EstadoOTTexto"].ToString() ,
-                UsuarioModificaOT = reader["UsuarioModificaOT"].ToString() ,
+                EstadoOTTexto = reader["EstadoOTTexto"].ToString(),
+                UsuarioModificaOT = reader["UsuarioModificaOT"].ToString(),
                 IngresoOrdenCompra = reader["IngresoOrdenCompra"].ToString(),
                 ReferenciasDTE = reader["ReferenciasDTE"].ToString(),
                 FechaRealEntregaOT = reader["FechaRealEntregaOT"].ToString(),
-                HoraTerminoOT =  reader["HoraTerminoOT"].ToString() ,
+                HoraTerminoOT = reader["HoraTerminoOT"].ToString(),
                 FechaEntregaCotizacionApprox = reader["FechaEntregaCotizacionApprox"].ToString(),
                 Observaciones = reader["Observaciones"].ToString(),
-                UsuarioCreaOT = reader["UsuarioCreaOT"].ToString() ,
+                UsuarioCreaOT = reader["UsuarioCreaOT"].ToString(),
                 AbonadoOT = Convert.ToDecimal(reader["AbonadoOT"]),
                 CotizacionAprobada = Convert.ToInt32(reader["CotizacionAprobada"]),
                 SubTotal = Convert.ToDecimal(reader["SubTotal"]),
@@ -331,8 +500,8 @@ namespace TallerPeliculasAPI.Repositorio
             {
                 IdDetalle = Convert.ToInt32(reader["IdDetalle"]),
                 Idorden = Convert.ToInt32(reader["Idorden"]),
-                CodigoProducto = reader["CodigoProducto"].ToString() ,
-                Descripcion = reader["Descripcion"].ToString() ,
+                CodigoProducto = reader["CodigoProducto"].ToString(),
+                Descripcion = reader["Descripcion"].ToString(),
                 Cantidad = Convert.ToInt32(reader["Cantidad"]),
                 ValorNeto = Convert.ToDecimal(reader["ValorNeto"]),
                 DescuentoPorcentaje = Convert.ToDecimal(reader["DescuentoPorcentaje"]),
@@ -350,8 +519,194 @@ namespace TallerPeliculasAPI.Repositorio
             {
                 IdImagen = Convert.ToInt32(reader["IdImagen"]),
                 Idorden = Convert.ToInt32(reader["Idorden"]),
-                RutaImagen = reader["RutaImagen"].ToString() 
+                RutaImagen = reader["RutaImagen"].ToString()
             };
+        }
+
+        public async Task<decimal> LeerAbonoOrdenTrabajoAsync(int idOrden)
+        {
+            if (idOrden <= 0)
+            {
+                throw new ArgumentException(
+                    "El IdOrden no es válido."
+                );
+            }
+
+            var ordenes = await LeerOrdenTrabajo(idOrden);
+
+            if (ordenes == null || ordenes.Count == 0)
+            {
+                return 0m;
+            }
+
+            return ordenes[0].AbonadoOT;
+        }
+
+        public async Task<bool> ActualizarAbonoOrdenTrabajoAsync(
+            int idOrden,
+            decimal abonadoOT
+        )
+        {
+            if (idOrden <= 0)
+            {
+                throw new ArgumentException(
+                    "El IdOrden no es válido."
+                );
+            }
+
+            if (abonadoOT < 0)
+            {
+                throw new ArgumentException(
+                    "El monto abonado no puede ser negativo."
+                );
+            }
+
+            var ordenes = await LeerOrdenTrabajo(idOrden);
+
+            if (ordenes == null || ordenes.Count == 0)
+            {
+                throw new ArgumentException(
+                    "No se encontró la Orden de Trabajo " + idOrden + "."
+                );
+            }
+
+            var ordenActual = ordenes[0];
+            int idReal = ordenActual.Id;
+
+            if (idReal <= 0)
+            {
+                throw new InvalidOperationException(
+                    "No fue posible determinar el Id real de la Orden de Trabajo."
+                );
+            }
+
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+
+                using (var transaction = connection.BeginTransaction())
+                {
+                    try
+                    {
+                        const string sqlActualizar = @"
+UPDATE dbo.OrdenTrabajo
+SET AbonadoOT = @AbonadoOT
+WHERE Id = @IdReal;";
+
+                        int filasAfectadas;
+
+                        using (var command = new SqlCommand(
+                            sqlActualizar,
+                            connection,
+                            transaction
+                        ))
+                        {
+                            command.CommandType = CommandType.Text;
+
+                            command.Parameters.Add(
+                                "@IdReal",
+                                SqlDbType.Int
+                            ).Value = idReal;
+
+                            var parametroAbono = command.Parameters.Add(
+                                "@AbonadoOT",
+                                SqlDbType.Decimal
+                            );
+
+                            parametroAbono.Precision = 18;
+                            parametroAbono.Scale = 2;
+                            parametroAbono.Value = abonadoOT;
+
+                            filasAfectadas =
+                                await command.ExecuteNonQueryAsync();
+                        }
+
+                        if (filasAfectadas <= 0)
+                        {
+                            transaction.Rollback();
+                            return false;
+                        }
+
+                        const string sqlVerificar = @"
+SELECT AbonadoOT
+FROM dbo.OrdenTrabajo
+WHERE Id = @IdReal;";
+
+                        decimal valorGuardado;
+
+                        using (var commandVerificar = new SqlCommand(
+                            sqlVerificar,
+                            connection,
+                            transaction
+                        ))
+                        {
+                            commandVerificar.CommandType = CommandType.Text;
+
+                            commandVerificar.Parameters.Add(
+                                "@IdReal",
+                                SqlDbType.Int
+                            ).Value = idReal;
+
+                            object resultado =
+                                await commandVerificar.ExecuteScalarAsync();
+
+                            if (
+                                resultado == null ||
+                                resultado == DBNull.Value
+                            )
+                            {
+                                transaction.Rollback();
+                                return false;
+                            }
+
+                            valorGuardado =
+                                Convert.ToDecimal(resultado);
+                        }
+
+                        if (valorGuardado != abonadoOT)
+                        {
+                            transaction.Rollback();
+
+                            throw new InvalidOperationException(
+                                "El valor del abono no quedó guardado correctamente."
+                            );
+                        }
+
+                        transaction.Commit();
+
+                        System.Diagnostics.Debug.WriteLine(
+                            "[ABONO OT] O.T. solicitada: " + idOrden
+                        );
+
+                        System.Diagnostics.Debug.WriteLine(
+                            "[ABONO OT] Id real actualizado: " + idReal
+                        );
+
+                        System.Diagnostics.Debug.WriteLine(
+                            "[ABONO OT] Valor enviado: " + abonadoOT
+                        );
+
+                        System.Diagnostics.Debug.WriteLine(
+                            "[ABONO OT] Valor verificado en BD: " + valorGuardado
+                        );
+
+                        return true;
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            transaction.Rollback();
+                        }
+                        catch
+                        {
+
+                        }
+
+                        throw;
+                    }
+                }
+            }
         }
     }
 }

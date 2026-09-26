@@ -57,9 +57,9 @@ namespace TallerPeliculasAPI.Controllers
                 }
 
 
-                if (idot>0)
+                if (idot > 0)
                 {
-                    return Ok(new { Id= idot, exito = true, mensaje = "Orden de trabajo creada correctamente." });
+                    return Ok(new { Id = idot, exito = true, mensaje = "Orden de trabajo creada correctamente." });
                 }
                 else
                 {
@@ -228,6 +228,355 @@ namespace TallerPeliculasAPI.Controllers
                     exito = true,
                     cantidad = guardados,
                     mensaje = "Productos agregados correctamente."
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
+        #endregion
+        #region AbonoOT
+
+        public class AbonoOrdenTrabajoRequest
+        {
+            public int IdOrden { get; set; }
+            public decimal AbonadoOT { get; set; }
+        }
+
+
+        // ================================================
+        // COMPROBAR QUE LA API NUEVA ESTÁ PUBLICADA
+        // ================================================
+        [HttpGet]
+        [Route("api/OrdenTrabajo/PingAbono")]
+        public IHttpActionResult PingAbono()
+        {
+            return Ok(new
+            {
+                exito = true,
+                mensaje = "ABONO_API_OK"
+            });
+        }
+
+
+        // ================================================
+        // ACTUALIZAR / GUARDAR ABONO
+        // ================================================
+        [HttpPost]
+        [Route("api/OrdenTrabajo/ActualizarAbono")]
+        public async Task<IHttpActionResult> ActualizarAbono(
+            [FromBody] AbonoOrdenTrabajoRequest datos)
+        {
+            if (datos == null)
+            {
+                return BadRequest(
+                    "Los datos del abono son requeridos."
+                );
+            }
+
+            if (datos.IdOrden <= 0)
+            {
+                return BadRequest(
+                    "El IdOrden no es válido."
+                );
+            }
+
+            if (datos.AbonadoOT < 0)
+            {
+                return BadRequest(
+                    "El abono no puede ser negativo."
+                );
+            }
+
+            try
+            {
+                bool resultado =
+                    await _negocio.ActualizarAbonoOrdenTrabajoAsync(
+                        datos.IdOrden,
+                        datos.AbonadoOT
+                    );
+
+                if (!resultado)
+                {
+                    return BadRequest(
+                        "No fue posible actualizar el abono."
+                    );
+                }
+
+                return Ok(new
+                {
+                    exito = true,
+                    IdOrden = datos.IdOrden,
+                    AbonadoOT = datos.AbonadoOT,
+                    mensaje = "Abono guardado correctamente."
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
+
+        // ================================================
+        // LEER ABONO GUARDADO
+        // ================================================
+        [HttpGet]
+        [Route("api/OrdenTrabajo/LeerAbono/{idOrden:int}")]
+        public async Task<IHttpActionResult> LeerAbono(
+            int idOrden)
+        {
+            if (idOrden <= 0)
+            {
+                return BadRequest(
+                    "El IdOrden no es válido."
+                );
+            }
+
+            try
+            {
+                decimal abonado =
+                    await _negocio.LeerAbonoOrdenTrabajoAsync(
+                        idOrden
+                    );
+
+                return Ok(new
+                {
+                    exito = true,
+                    IdOrden = idOrden,
+                    AbonadoOT = abonado
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
+        #endregion
+
+        // ==========================================================
+        // IMÁGENES O.T.
+        // Permite guardar imágenes en una O.T. YA EXISTENTE.
+        // ==========================================================
+        #region ImagenesOT
+
+        [HttpPost]
+        [Route("api/OrdenTrabajo/CrearImagenesOrdenTrabajoAsync")]
+        public async Task<IHttpActionResult> CrearImagenesOrdenTrabajoAsync(
+            [FromBody] OrdenTrabajoImagenDto imagen)
+        {
+            if (imagen == null)
+            {
+                return BadRequest(
+                    "Los datos de la imagen son requeridos."
+                );
+            }
+
+            if (string.IsNullOrWhiteSpace(imagen.Idorden))
+            {
+                return BadRequest(
+                    "El Idorden de la imagen es requerido."
+                );
+            }
+
+            int idOrden;
+
+            if (
+                !int.TryParse(imagen.Idorden, out idOrden) ||
+                idOrden <= 0
+            )
+            {
+                return BadRequest(
+                    "El Idorden de la imagen no es válido."
+                );
+            }
+
+            if (string.IsNullOrWhiteSpace(imagen.RutaImagen))
+            {
+                return BadRequest(
+                    "La imagen no contiene información para guardar."
+                );
+            }
+
+            try
+            {
+                bool resultado =
+                    await _negocio.CrearImagenesOrdenTrabajoAsync(
+                        imagen
+                    );
+
+                if (!resultado)
+                {
+                    return InternalServerError(
+                        new Exception(
+                            "No fue posible guardar la imagen."
+                        )
+                    );
+                }
+
+                return Ok(new
+                {
+                    exito = true,
+                    IdOrden = idOrden,
+                    mensaje = "Imagen guardada correctamente."
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
+        // ==========================================================
+        // ELIMINAR IMAGEN DE UNA O.T.
+        // ==========================================================
+        [HttpPost]
+        [Route("api/OrdenTrabajo/ActualizarImagen")]
+        public async Task<IHttpActionResult> ActualizarImagen(
+            [FromBody] OrdenTrabajoImagenDto imagen)
+        {
+            if (imagen == null)
+            {
+                return BadRequest(
+                    "Los datos de la imagen son requeridos."
+                );
+            }
+
+            int idImagen;
+
+            try
+            {
+                idImagen = Convert.ToInt32(imagen.IdImagen);
+            }
+            catch
+            {
+                return BadRequest(
+                    "El IdImagen no es válido."
+                );
+            }
+
+            return await ActualizarImagenInterna(
+                idImagen,
+                imagen
+            );
+        }
+
+        [HttpPost]
+        [Route("api/OrdenTrabajo/ActualizarImagen/{idImagen:int}")]
+        public async Task<IHttpActionResult> ActualizarImagenPorId(
+            int idImagen,
+            [FromBody] OrdenTrabajoImagenDto imagen)
+        {
+            return await ActualizarImagenInterna(
+                idImagen,
+                imagen
+            );
+        }
+
+        private async Task<IHttpActionResult> ActualizarImagenInterna(
+            int idImagen,
+            OrdenTrabajoImagenDto imagen)
+        {
+            if (idImagen <= 0)
+            {
+                return BadRequest(
+                    "El IdImagen no es válido."
+                );
+            }
+
+            if (imagen == null)
+            {
+                return BadRequest(
+                    "Los datos de la imagen son requeridos."
+                );
+            }
+
+            if (string.IsNullOrWhiteSpace(imagen.RutaImagen))
+            {
+                return BadRequest(
+                    "La imagen no contiene información para actualizar."
+                );
+            }
+
+            try
+            {
+                bool resultado =
+                    await _negocio
+                        .ActualizarImagenOrdenTrabajoAsync(
+                            idImagen,
+                            imagen.RutaImagen
+                        );
+
+                if (!resultado)
+                {
+                    return NotFound();
+                }
+
+                return Ok(new
+                {
+                    exito = true,
+                    IdImagen = idImagen,
+                    mensaje = "Imagen actualizada correctamente."
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
+        [HttpPost]
+        [Route("api/OrdenTrabajo/EliminarImagen/{idImagen:int}")]
+        public async Task<IHttpActionResult> EliminarImagen(
+            int idImagen)
+        {
+            if (idImagen <= 0)
+            {
+                return BadRequest(
+                    "El IdImagen no es válido."
+                );
+            }
+
+            try
+            {
+                bool resultado =
+                    await _negocio.EliminarImagenOrdenTrabajoAsync(
+                        idImagen
+                    );
+
+                if (!resultado)
+                {
+                    return NotFound();
+                }
+
+                return Ok(new
+                {
+                    exito = true,
+                    IdImagen = idImagen,
+                    mensaje = "Imagen eliminada correctamente."
                 });
             }
             catch (ArgumentException ex)
