@@ -23,6 +23,16 @@ namespace TallerPeliculasAPI.Repositorio
         Task<List<OrdenTrabajo>> LeerOrdenTrabajo(int idOrden);
         Task<decimal> LeerAbonoOrdenTrabajoAsync(int idOrden);
         Task<bool> ActualizarAbonoOrdenTrabajoAsync(int idOrden, decimal abonadoOT);
+
+        // Anula la OT identificada por la PK real dbo.OrdenTrabajo.Id.
+        Task<ResultadoAnulacionOrdenTrabajo> AnularOrdenTrabajoAsync(int idReal);
+    }
+
+    public enum ResultadoAnulacionOrdenTrabajo
+    {
+        NoEncontrada = 0,
+        Anulada = 1,
+        YaAnulada = 2
     }
 
     public class OrdenTrabajoRepository : IOrdenTrabajoRepository
@@ -98,61 +108,274 @@ namespace TallerPeliculasAPI.Repositorio
 
         public async Task<bool> ActualizarOrdenTrabajoAsync(OrdenTrabajoDto orden)
         {
+            if (orden == null)
+            {
+                throw new ArgumentNullException(nameof(orden));
+            }
+
+            int idReal;
+            if (!int.TryParse(Convert.ToString(orden.Idorden), out idReal) || idReal <= 0)
+            {
+                throw new ArgumentException("El identificador real de la Orden de Trabajo no es válido.");
+            }
+
             using (var connection = new SqlConnection(_connectionString))
             {
-                using (var command = new SqlCommand("dbo.sp_ActualizarOrdenTrabajo", connection))
+                await connection.OpenAsync();
+
+                using (var transaction = connection.BeginTransaction(IsolationLevel.ReadCommitted))
                 {
-                    command.CommandType = CommandType.StoredProcedure;
+                    try
+                    {
+                        const string sqlEstadoActual = @"
+SELECT Estado
+FROM dbo.OrdenTrabajo WITH (UPDLOCK, HOLDLOCK)
+WHERE Id = @IdReal;";
 
-                    command.Parameters.Add("@Idorden", SqlDbType.Int).Value = orden.Idorden;
-                    command.Parameters.Add("@IdCliente", SqlDbType.Int).Value = orden.IdCliente;
-                    command.Parameters.Add("@NombreCliente", SqlDbType.VarChar, 150).Value = orden.NombreCliente ?? (object)DBNull.Value;
-                    command.Parameters.Add("@IdEncargado", SqlDbType.Int).Value = orden.IdEncargado;
-                    command.Parameters.Add("@NombreEncargado", SqlDbType.VarChar, 100).Value = orden.NombreEncargado ?? (object)DBNull.Value;
-                    command.Parameters.Add("@Sucursal", SqlDbType.VarChar, 100).Value = orden.Sucursal ?? (object)DBNull.Value;
-                    command.Parameters.Add("@NotaVenta", SqlDbType.VarChar, 50).Value = orden.NotaVenta ?? (object)DBNull.Value;
-                    command.Parameters.Add("@HoraEntrega", SqlDbType.Time).Value = orden.HoraEntrega;
-                    command.Parameters.Add("@Bodega", SqlDbType.VarChar, 50).Value = orden.Bodega ?? (object)DBNull.Value;
-                    command.Parameters.Add("@IdVendedor", SqlDbType.Int).Value = orden.IdVendedor;
-                    command.Parameters.Add("@NombreVendedor", SqlDbType.VarChar, 100).Value = orden.NombreVendedor ?? (object)DBNull.Value;
-                    command.Parameters.Add("@Estado", SqlDbType.Int).Value = orden.Estado;
-                    command.Parameters.Add("@EstadoOTTexto", SqlDbType.VarChar, 50).Value = orden.EstadoOTTexto ?? (object)DBNull.Value;
-                    command.Parameters.Add("@UsuarioModificaOT", SqlDbType.VarChar, 50).Value = orden.UsuarioModificaOT ?? (object)DBNull.Value;
-                    command.Parameters.Add("@IngresoOrdenCompra", SqlDbType.VarChar, 50).Value = orden.IngresoOrdenCompra ?? (object)DBNull.Value;
-                    command.Parameters.Add("@ReferenciasDTE", SqlDbType.VarChar, 100).Value = orden.ReferenciasDTE ?? (object)DBNull.Value;
-                    command.Parameters.Add("@FechaRealEntregaOT", SqlDbType.Date).Value = orden.FechaRealEntregaOT ?? (object)DBNull.Value;
-                    command.Parameters.Add("@HoraTerminoOT", SqlDbType.Time).Value = orden.HoraTerminoOT ?? (object)DBNull.Value;
-                    command.Parameters.Add("@FechaEntregaCotizacionApprox", SqlDbType.Date).Value = orden.FechaEntregaCotizacionApprox ?? (object)DBNull.Value;
-                    command.Parameters.Add("@Observaciones", SqlDbType.VarChar, -1).Value = orden.Observaciones ?? (object)DBNull.Value;
-                    command.Parameters.Add("@AbonadoOT", SqlDbType.Decimal).Value = orden.AbonadoOT;
-                    command.Parameters.Add("@CotizacionAprobada", SqlDbType.Int).Value = orden.CotizacionAprobada;
-                    command.Parameters.Add("@SubTotal", SqlDbType.Decimal).Value = orden.SubTotal;
-                    command.Parameters.Add("@DescuentoPorcentaje", SqlDbType.Decimal).Value = orden.DescuentoPorcentaje;
-                    command.Parameters.Add("@DescuentoMonto", SqlDbType.Decimal).Value = orden.DescuentoMonto;
-                    command.Parameters.Add("@TotalNeto", SqlDbType.Decimal).Value = orden.TotalNeto;
-                    command.Parameters.Add("@TotalIVA", SqlDbType.Decimal).Value = orden.TotalIVA;
-                    command.Parameters.Add("@TotalOT", SqlDbType.Decimal).Value = orden.TotalOT;
+                        int estadoActual;
 
-                    await connection.OpenAsync();
-                    int filasAfectadas = await command.ExecuteNonQueryAsync();
+                        using (var consultarEstado = new SqlCommand(
+                            sqlEstadoActual,
+                            connection,
+                            transaction
+                        ))
+                        {
+                            consultarEstado.CommandType = CommandType.Text;
+                            consultarEstado.Parameters.Add("@IdReal", SqlDbType.Int).Value = idReal;
 
-                    return filasAfectadas > 0;
+                            object resultadoEstado = await consultarEstado.ExecuteScalarAsync();
+
+                            if (resultadoEstado == null || resultadoEstado == DBNull.Value)
+                            {
+                                transaction.Rollback();
+                                return false;
+                            }
+
+                            estadoActual = Convert.ToInt32(resultadoEstado);
+                        }
+
+                        const string sqlActualizar = @"
+UPDATE dbo.OrdenTrabajo
+SET IdCliente = @IdCliente,
+    NombreCliente = @NombreCliente,
+    IdEncargado = @IdEncargado,
+    NombreEncargado = @NombreEncargado,
+    Sucursal = @Sucursal,
+    NotaVenta = @NotaVenta,
+    HoraEntrega = @HoraEntrega,
+    Bodega = @Bodega,
+    IdVendedor = @IdVendedor,
+    NombreVendedor = @NombreVendedor,
+    Estado = @Estado,
+    EstadoOTTexto = @EstadoOTTexto,
+    UsuarioModificaOT = @UsuarioModificaOT,
+    IngresoOrdenCompra = @IngresoOrdenCompra,
+    ReferenciasDTE = @ReferenciasDTE,
+    FechaRealEntregaOT = @FechaRealEntregaOT,
+    HoraTerminoOT = @HoraTerminoOT,
+    FechaEntregaCotizacionApprox = @FechaEntregaCotizacionApprox,
+    Observaciones = @Observaciones,
+    AbonadoOT = @AbonadoOT,
+    CotizacionAprobada = @CotizacionAprobada,
+    SubTotal = @SubTotal,
+    DescuentoPorcentaje = @DescuentoPorcentaje,
+    DescuentoMonto = @DescuentoMonto,
+    TotalNeto = @TotalNeto,
+    TotalIVA = @TotalIVA,
+    TotalOT = @TotalOT
+WHERE Id = @IdReal;";
+
+                        using (var command = new SqlCommand(
+                            sqlActualizar,
+                            connection,
+                            transaction
+                        ))
+                        {
+                            command.CommandType = CommandType.Text;
+
+                            command.Parameters.Add("@IdReal", SqlDbType.Int).Value = idReal;
+                            command.Parameters.Add("@IdCliente", SqlDbType.Int).Value = Convert.ToInt32(orden.IdCliente);
+                            command.Parameters.Add("@NombreCliente", SqlDbType.VarChar, 150).Value = orden.NombreCliente ?? (object)DBNull.Value;
+                            command.Parameters.Add("@IdEncargado", SqlDbType.Int).Value = Convert.ToInt32(orden.IdEncargado);
+                            command.Parameters.Add("@NombreEncargado", SqlDbType.VarChar, 100).Value = orden.NombreEncargado ?? (object)DBNull.Value;
+                            command.Parameters.Add("@Sucursal", SqlDbType.VarChar, 100).Value = orden.Sucursal ?? (object)DBNull.Value;
+                            command.Parameters.Add("@NotaVenta", SqlDbType.VarChar, 50).Value = orden.NotaVenta ?? (object)DBNull.Value;
+                            command.Parameters.Add("@HoraEntrega", SqlDbType.Time).Value = string.IsNullOrWhiteSpace(Convert.ToString(orden.HoraEntrega)) ? (object)DBNull.Value : orden.HoraEntrega;
+                            command.Parameters.Add("@Bodega", SqlDbType.VarChar, 50).Value = orden.Bodega ?? (object)DBNull.Value;
+                            command.Parameters.Add("@IdVendedor", SqlDbType.Int).Value = Convert.ToInt32(orden.IdVendedor);
+                            command.Parameters.Add("@NombreVendedor", SqlDbType.VarChar, 100).Value = orden.NombreVendedor ?? (object)DBNull.Value;
+                            command.Parameters.Add("@Estado", SqlDbType.Int).Value = estadoActual;
+                            command.Parameters.Add("@EstadoOTTexto", SqlDbType.VarChar, 50).Value = orden.EstadoOTTexto ?? (object)DBNull.Value;
+                            command.Parameters.Add("@UsuarioModificaOT", SqlDbType.VarChar, 50).Value = orden.UsuarioModificaOT ?? (object)DBNull.Value;
+                            command.Parameters.Add("@IngresoOrdenCompra", SqlDbType.VarChar, 50).Value = orden.IngresoOrdenCompra ?? (object)DBNull.Value;
+                            command.Parameters.Add("@ReferenciasDTE", SqlDbType.VarChar, 100).Value = orden.ReferenciasDTE ?? (object)DBNull.Value;
+                            command.Parameters.Add("@FechaRealEntregaOT", SqlDbType.Date).Value = string.IsNullOrWhiteSpace(Convert.ToString(orden.FechaRealEntregaOT)) ? (object)DBNull.Value : orden.FechaRealEntregaOT;
+                            command.Parameters.Add("@HoraTerminoOT", SqlDbType.Time).Value = string.IsNullOrWhiteSpace(Convert.ToString(orden.HoraTerminoOT)) ? (object)DBNull.Value : orden.HoraTerminoOT;
+                            command.Parameters.Add("@FechaEntregaCotizacionApprox", SqlDbType.Date).Value = string.IsNullOrWhiteSpace(Convert.ToString(orden.FechaEntregaCotizacionApprox)) ? (object)DBNull.Value : orden.FechaEntregaCotizacionApprox;
+                            command.Parameters.Add("@Observaciones", SqlDbType.VarChar, -1).Value = orden.Observaciones ?? (object)DBNull.Value;
+
+                            var parametroAbonado = command.Parameters.Add("@AbonadoOT", SqlDbType.Decimal);
+                            parametroAbonado.Precision = 18;
+                            parametroAbonado.Scale = 2;
+                            parametroAbonado.Value = Convert.ToDecimal(orden.AbonadoOT);
+
+                            command.Parameters.Add("@CotizacionAprobada", SqlDbType.Int).Value = Convert.ToInt32(orden.CotizacionAprobada);
+
+                            var parametroSubTotal = command.Parameters.Add("@SubTotal", SqlDbType.Decimal);
+                            parametroSubTotal.Precision = 18;
+                            parametroSubTotal.Scale = 2;
+                            parametroSubTotal.Value = Convert.ToDecimal(orden.SubTotal);
+
+                            var parametroDescuentoPorcentaje = command.Parameters.Add("@DescuentoPorcentaje", SqlDbType.Decimal);
+                            parametroDescuentoPorcentaje.Precision = 5;
+                            parametroDescuentoPorcentaje.Scale = 2;
+                            parametroDescuentoPorcentaje.Value = Convert.ToDecimal(orden.DescuentoPorcentaje);
+
+                            var parametroDescuentoMonto = command.Parameters.Add("@DescuentoMonto", SqlDbType.Decimal);
+                            parametroDescuentoMonto.Precision = 18;
+                            parametroDescuentoMonto.Scale = 2;
+                            parametroDescuentoMonto.Value = Convert.ToDecimal(orden.DescuentoMonto);
+
+                            var parametroTotalNeto = command.Parameters.Add("@TotalNeto", SqlDbType.Decimal);
+                            parametroTotalNeto.Precision = 18;
+                            parametroTotalNeto.Scale = 2;
+                            parametroTotalNeto.Value = Convert.ToDecimal(orden.TotalNeto);
+
+                            var parametroTotalIVA = command.Parameters.Add("@TotalIVA", SqlDbType.Decimal);
+                            parametroTotalIVA.Precision = 18;
+                            parametroTotalIVA.Scale = 2;
+                            parametroTotalIVA.Value = Convert.ToDecimal(orden.TotalIVA);
+
+                            var parametroTotalOT = command.Parameters.Add("@TotalOT", SqlDbType.Decimal);
+                            parametroTotalOT.Precision = 18;
+                            parametroTotalOT.Scale = 2;
+                            parametroTotalOT.Value = Convert.ToDecimal(orden.TotalOT);
+
+                            int filasAfectadas = await command.ExecuteNonQueryAsync();
+
+                            if (filasAfectadas <= 0)
+                            {
+                                transaction.Rollback();
+                                return false;
+                            }
+                        }
+
+                        transaction.Commit();
+                        return true;
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            transaction.Rollback();
+                        }
+                        catch
+                        {
+                        }
+
+                        throw;
+                    }
                 }
             }
         }
+
         public async Task<bool> EliminarDetalleOTAsync(int idDetalle)
         {
+            if (idDetalle <= 0)
+            {
+                throw new ArgumentException(
+                    "El identificador del detalle no es válido.",
+                    nameof(idDetalle)
+                );
+            }
+
             using (var connection = new SqlConnection(_connectionString))
             {
-                using (var command = new SqlCommand("dbo.sp_EliminarDetalleOT", connection))
+                await connection.OpenAsync();
+
+                using (var transaction = connection.BeginTransaction(IsolationLevel.ReadCommitted))
                 {
-                    command.CommandType = CommandType.StoredProcedure;
-                    command.Parameters.Add("@IdDetalle", SqlDbType.Int).Value = idDetalle;
+                    try
+                    {
+                        const string sqlVerificar = @"
+SELECT TOP 1 IdDetalle
+FROM dbo.OrdenTrabajoDetalle WITH (UPDLOCK, HOLDLOCK)
+WHERE IdDetalle = @IdDetalle;";
 
-                    await connection.OpenAsync();
-                    int filasAfectadas = await command.ExecuteNonQueryAsync();
+                        using (var verificarAntes = new SqlCommand(
+                            sqlVerificar,
+                            connection,
+                            transaction
+                        ))
+                        {
+                            verificarAntes.CommandType = CommandType.Text;
+                            verificarAntes.Parameters.Add(
+                                "@IdDetalle",
+                                SqlDbType.Int
+                            ).Value = idDetalle;
 
-                    return filasAfectadas > 0;
+                            object existente =
+                                await verificarAntes.ExecuteScalarAsync();
+
+                            if (existente == null || existente == DBNull.Value)
+                            {
+                                transaction.Rollback();
+                                return false;
+                            }
+                        }
+
+                        using (var command = new SqlCommand(
+                            "dbo.sp_EliminarDetalleOT",
+                            connection,
+                            transaction
+                        ))
+                        {
+                            command.CommandType = CommandType.StoredProcedure;
+                            command.Parameters.Add(
+                                "@IdDetalle",
+                                SqlDbType.Int
+                            ).Value = idDetalle;
+
+                            await command.ExecuteNonQueryAsync();
+                        }
+
+                        using (var verificarDespues = new SqlCommand(
+                            sqlVerificar,
+                            connection,
+                            transaction
+                        ))
+                        {
+                            verificarDespues.CommandType = CommandType.Text;
+                            verificarDespues.Parameters.Add(
+                                "@IdDetalle",
+                                SqlDbType.Int
+                            ).Value = idDetalle;
+
+                            object existente =
+                                await verificarDespues.ExecuteScalarAsync();
+
+                            if (existente != null && existente != DBNull.Value)
+                            {
+                                transaction.Rollback();
+                                return false;
+                            }
+                        }
+
+                        transaction.Commit();
+                        return true;
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            transaction.Rollback();
+                        }
+                        catch (InvalidOperationException)
+                        {
+                        }
+
+                        throw;
+                    }
                 }
             }
         }
@@ -708,5 +931,106 @@ WHERE Id = @IdReal;";
                 }
             }
         }
+
+        public async Task<ResultadoAnulacionOrdenTrabajo> AnularOrdenTrabajoAsync(int idReal)
+        {
+            if (idReal <= 0)
+            {
+                throw new ArgumentException("El ID real de la OT debe ser mayor que cero.", nameof(idReal));
+            }
+
+            using (var conexion = new SqlConnection(_connectionString))
+            {
+                await conexion.OpenAsync();
+
+                using (var transaccion = conexion.BeginTransaction(IsolationLevel.ReadCommitted))
+                {
+                    try
+                    {
+                        // Bloquear esta fila hasta el final para evitar anulaciones simultáneas.
+                        const string consultarEstadoSql = @"
+SELECT EstadoOTTexto
+FROM dbo.OrdenTrabajo WITH (UPDLOCK, HOLDLOCK)
+WHERE Id = @IdReal;";
+
+                        string estadoActual;
+                        using (var consultar = new SqlCommand(consultarEstadoSql, conexion, transaccion))
+                        {
+                            consultar.CommandType = CommandType.Text;
+                            consultar.Parameters.Add("@IdReal", SqlDbType.Int).Value = idReal;
+
+                            object valor = await consultar.ExecuteScalarAsync();
+                            if (valor == null)
+                            {
+                                transaccion.Rollback();
+                                return ResultadoAnulacionOrdenTrabajo.NoEncontrada;
+                            }
+
+                            estadoActual = valor == DBNull.Value
+                                ? string.Empty
+                                : Convert.ToString(valor).Trim();
+                        }
+
+                        if (string.Equals(estadoActual, "ANULADA", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(estadoActual, "ANULADO", StringComparison.OrdinalIgnoreCase))
+                        {
+                            transaccion.Commit();
+                            return ResultadoAnulacionOrdenTrabajo.YaAnulada;
+                        }
+
+                        const string anularSql = @"
+UPDATE dbo.OrdenTrabajo
+SET EstadoOTTexto = @EstadoOTTexto
+WHERE Id = @IdReal;";
+
+                        using (var actualizar = new SqlCommand(anularSql, conexion, transaccion))
+                        {
+                            actualizar.CommandType = CommandType.Text;
+                            actualizar.Parameters.Add("@IdReal", SqlDbType.Int).Value = idReal;
+                            actualizar.Parameters.Add("@EstadoOTTexto", SqlDbType.VarChar, 50).Value = "ANULADA";
+                            await actualizar.ExecuteNonQueryAsync();
+                        }
+
+                        // No depender del conteo de filas, que puede variar por NOCOUNT o triggers.
+                        // Verificar el estado persistido antes de confirmar la transaccion.
+
+                        // Verificar dentro de la misma transacción antes del commit.
+                        using (var verificar = new SqlCommand(consultarEstadoSql, conexion, transaccion))
+                        {
+                            verificar.CommandType = CommandType.Text;
+                            verificar.Parameters.Add("@IdReal", SqlDbType.Int).Value = idReal;
+
+                            object resultado = await verificar.ExecuteScalarAsync();
+                            string estadoGuardado = resultado == null || resultado == DBNull.Value
+                                ? string.Empty
+                                : Convert.ToString(resultado).Trim();
+
+                            if (!string.Equals(estadoGuardado, "ANULADA", StringComparison.OrdinalIgnoreCase))
+                            {
+                                throw new InvalidOperationException(
+                                    "No se pudo verificar el estado ANULADA en la base de datos."
+                                );
+                            }
+                        }
+
+                        transaccion.Commit();
+                        return ResultadoAnulacionOrdenTrabajo.Anulada;
+                    }
+                    catch
+                    {
+                        // Si ya hubo rollback o commit, un segundo rollback puede fallar.
+                        try
+                        {
+                            transaccion.Rollback();
+                        }
+                        catch (InvalidOperationException)
+                        {
+                        }
+                        throw;
+                    }
+                }
+            }
+        }
+
     }
 }

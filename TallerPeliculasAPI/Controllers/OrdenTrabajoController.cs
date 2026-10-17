@@ -4,6 +4,7 @@ using System.Web.Http;
 using System.Web.Http.Cors;
 using TallerPeliculasAPI.Modelo;
 using TallerPeliculasAPI.Negocio;
+using TallerPeliculasAPI.Repositorio;
 
 namespace TallerPeliculasAPI.Controllers
 {
@@ -116,8 +117,88 @@ namespace TallerPeliculasAPI.Controllers
         }
         #endregion
 
+        #region AnularOT
+
+        // Mantiene el contrato existente del frontend (envía Id e IdOrden).
+        public class AnularOrdenTrabajoRequest
+        {
+            public int Id { get; set; }
+            public int IdOrden { get; set; }
+        }
+
+        [HttpGet]
+        [Route("api/OrdenTrabajo/PingAnular")]
+        public IHttpActionResult PingAnular()
+        {
+            return Ok(new { exito = true, mensaje = "ANULAR_API_OK" });
+        }
+
+        [HttpPost]
+        [Route("api/OrdenTrabajo/Anular")]
+        public async Task<IHttpActionResult> Anular([FromBody] AnularOrdenTrabajoRequest datos)
+        {
+            if (datos == null)
+            {
+                return BadRequest("Los datos para anular la OT son requeridos.");
+            }
+
+            if (datos.Id > 0 && datos.IdOrden > 0 && datos.Id != datos.IdOrden)
+            {
+                return BadRequest("Id e IdOrden deben identificar la misma OT.");
+            }
+
+            int idReal = datos.Id > 0 ? datos.Id : datos.IdOrden;
+            if (idReal <= 0)
+            {
+                return BadRequest("El ID real de la OT no es válido.");
+            }
+
+            try
+            {
+                // Negocio -> Repositorio -> SQL Server (MiConexionSqlServer).
+                // El repositorio modifica EstadoOTTexto, no EstadoOT.
+                ResultadoAnulacionOrdenTrabajo resultado =
+                    await _negocio.AnularOrdenTrabajoAsync(idReal);
+
+                if (resultado == ResultadoAnulacionOrdenTrabajo.NoEncontrada)
+                {
+                    return BadRequest("No existe una OT con el ID indicado.");
+                }
+
+                bool yaAnulada = resultado == ResultadoAnulacionOrdenTrabajo.YaAnulada;
+
+                return Ok(new
+                {
+                    exito = true,
+                    yaAnulada = yaAnulada,
+                    Id = idReal,
+                    IdOrden = idReal,
+                    EstadoOT = "ANULADA",
+                    EstadoOTTexto = "ANULADA",
+                    mensaje = yaAnulada
+                        ? "La OT ya se encontraba anulada."
+                        : "OT anulada correctamente."
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError(
+                    "Error al anular la OT {0}: {1}", idReal, ex
+                );
+                return InternalServerError(new InvalidOperationException(
+                    "No fue posible anular la OT. Revise los registros del servidor."
+                ));
+            }
+        }
+
+        #endregion
+
         [HttpDelete]
-        [Route("eliminar-detalle/{idDetalle:int}")]
+        [Route("api/OrdenTrabajo/eliminar-detalle/{idDetalle:int}")]
         public async Task<IHttpActionResult> EliminarDetalle(int idDetalle)
         {
             try
@@ -141,6 +222,13 @@ namespace TallerPeliculasAPI.Controllers
             {
                 return InternalServerError(ex);
             }
+        }
+
+        [HttpPost]
+        [Route("api/OrdenTrabajo/EliminarDetalle/{idDetalle:int}")]
+        public async Task<IHttpActionResult> EliminarDetallePost(int idDetalle)
+        {
+            return await EliminarDetalle(idDetalle);
         }
 
         #region Actualizar
