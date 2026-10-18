@@ -8,13 +8,14 @@ namespace TallerPeliculasAPI.Modelo
     public class OrdenTrabajoDto
     {
         public string Idorden { get; set; }
-        public string IdCliente { get; set; }  
+        public string IdCliente { get; set; }
         public string NombreCliente { get; set; }
         public string IdEncargado { get; set; }
         public string NombreEncargado { get; set; }
         public string Sucursal { get; set; }
         public string NotaVenta { get; set; }
         public string FechaIngreso { get; set; }
+        public string FechaEntrega { get; set; }
         public string HoraIngreso { get; set; }
         public string HoraEntrega { get; set; }
         public string Bodega { get; set; }
@@ -38,7 +39,6 @@ namespace TallerPeliculasAPI.Modelo
         public string TotalNeto { get; set; }
         public string TotalIVA { get; set; }
         public string TotalOT { get; set; }
-       
     }
 
     public class OrdenTrabajoCompletaDto
@@ -59,9 +59,6 @@ namespace TallerPeliculasAPI.Modelo
         public string ValorUnitario { get; set; }
         public string DescuentoPorcentaje { get; set; }
         public string SubTotal { get; set; }
-
-
-       
     }
 
     public class OrdenTrabajoImagenDto

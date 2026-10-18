@@ -13,9 +13,10 @@ namespace TallerPeliculasAPI.Modelo
         public string NombreCliente { get; set; } = string.Empty;
         public int IdEncargado { get; set; }
         public string NombreEncargado { get; set; } = string.Empty;
-        public string  Sucursal { get; set; }
-        public string  NotaVenta { get; set; }
+        public string Sucursal { get; set; }
+        public string NotaVenta { get; set; }
         public string FechaIngreso { get; set; }
+        public string FechaEntrega { get; set; }
         public string HoraIngreso { get; set; }
         public string HoraEntrega { get; set; }
         public string Bodega { get; set; } = string.Empty;
@@ -23,13 +24,13 @@ namespace TallerPeliculasAPI.Modelo
         public string NombreVendedor { get; set; } = string.Empty;
         public int Estado { get; set; }
         public string EstadoOTTexto { get; set; } = string.Empty;
-        public string  UsuarioModificaOT { get; set; }
-        public string  IngresoOrdenCompra { get; set; }
-        public string  ReferenciasDTE { get; set; }
+        public string UsuarioModificaOT { get; set; }
+        public string IngresoOrdenCompra { get; set; }
+        public string ReferenciasDTE { get; set; }
         public string FechaRealEntregaOT { get; set; }
-        public string  HoraTerminoOT { get; set; }
+        public string HoraTerminoOT { get; set; }
         public string FechaEntregaCotizacionApprox { get; set; }
-        public string  Observaciones { get; set; }
+        public string Observaciones { get; set; }
         public string UsuarioCreaOT { get; set; } = string.Empty;
         public decimal AbonadoOT { get; set; }
         public int CotizacionAprobada { get; set; }
